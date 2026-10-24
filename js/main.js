@@ -247,6 +247,12 @@ class Game {
 
   // ---------- 世界管理 ----------
   clearWorld() {
+    // 先关掉热成像/夜视，避免效果残留到菜单
+    this.setThermal(false);
+    this.nvg = false;
+    this.scopeState = null;
+    this.lowPowerOptic = null;
+    this.thermalOn = false;
     for (const b of this.bots) b.dispose();
     if (this.zombies) for (const z of this.zombies) z.dispose();
     if (this.teammates) for (const t of this.teammates) t.dispose();
@@ -404,11 +410,28 @@ class Game {
     if (this.thermalOn === on) return;
     this.thermalOn = on;
     this.grade.uniforms.thermal.value = on ? 1 : 0;
-    for (const b of this.bots) {
-      b.model.root.traverse(o => {
-        if (o.isMesh && o.material && o.material.emissive) {
-          if (on) { o.userData.em = o.userData.em || [o.material.emissive.getHex(), o.material.emissiveIntensity]; o.material.emissive.setHex(0xffffff); o.material.emissiveIntensity = b.alive ? 3 : 0.8; }
-          else if (o.userData.em) { o.material.emissive.setHex(o.userData.em[0]); o.material.emissiveIntensity = o.userData.em[1]; }
+    // 收集所有需要高亮的模型（士兵 + 僵尸 + 队友）
+    const roots = [];
+    for (const b of this.bots) if (b.model) roots.push(b.model.root);
+    for (const z of (this.zombies || [])) if (z.model) roots.push(z.model.root);
+    for (const t of (this.teammates || [])) if (t.model) roots.push(t.model.root);
+    const seen = new Set();
+    for (const root of roots) {
+      root.traverse(o => {
+        if (!o.isMesh || !o.material || !o.material.emissive) return;
+        const m = o.material;
+        if (seen.has(m)) return;      // 共享材质只处理一次
+        seen.add(m);
+        if (on) {
+          if (m.userData.emBase === undefined) {
+            m.userData.emBase = [m.emissive.getHex(), m.emissiveIntensity];
+          }
+          m.emissive.setHex(0xffffff);
+          m.emissiveIntensity = 3;
+        } else if (m.userData.emBase !== undefined) {
+          m.emissive.setHex(m.userData.emBase[0]);
+          m.emissiveIntensity = m.userData.emBase[1];
+          delete m.userData.emBase;
         }
       });
     }
@@ -427,7 +450,10 @@ class Game {
       this.snapshotInput();
       this.menu.update(dt);
       this.renderPass.scene = this.menu.scene3d; this.renderPass.camera = this.menu.camera3d; this.vmPass.enabled = false;
+      // 菜单里强制清掉所有战斗滤镜，避免残留
       this.grade.uniforms.nvg.value = 0; this.grade.uniforms.hurt.value = 0; this.grade.uniforms.thermal.value = 0; this.grade.uniforms.wp.value = 0;
+      if (this.thermalOn) this.setThermal(false);
+      this.scopeState = null; this.lowPowerOptic = null;
     }
     this.grade.uniforms.time.value = performance.now() * 0.001;
     this.composer.render(dt);
@@ -456,7 +482,10 @@ class Game {
       this.grade.uniforms.nvg.value = this.nvg && pl.alive && !this.scopeState ? 1 : 0;
       document.getElementById('nvgFrame').classList.toggle('hidden', !(this.nvg && pl.alive && !this.scopeState));
       this.renderer.toneMappingExposure = (this.world.env.exposure ?? 1) * (this.nvg ? 1.0 : 1);
-      this.setThermal(this.scopeState === 'thermal');
+      // 热成像只在"活着 + 正开热成像镜"时生效，其余情况一律关闭
+      const thermalNow = pl.alive && this.scopeState === 'thermal';
+      this.setThermal(thermalNow);
+      if (!thermalNow) this.grade.uniforms.thermal.value = 0;
       this.grade.uniforms.hurt.value = pl.alive ? Math.max(0, 1 - pl.hp / pl.maxHp - 0.2) : 0.8;
     }
     for (const b of this.bots) b.update(dt);

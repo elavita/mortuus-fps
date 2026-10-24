@@ -197,17 +197,17 @@ export function createZombieModel(type = 'walker', variant = 0) {
       if (moving) A.phase += dt * A.speed * 2.6;
 
       if (A.crawling) {
-        // 爬行：身体压低贴地，靠双臂拖动
+        // 爬行：身体压低贴地，靠双臂拖动（前方 -Z）
         hips.position.y = damp(hips.position.y, 0.20, 8, dt);
         root.rotation.x = damp(root.rotation.x, 0.0, 8, dt);
-        torso.rotation.x = damp(torso.rotation.x, -0.55, 6, dt);
+        torso.rotation.x = damp(torso.rotation.x, 0.55, 6, dt);
         torso.position.y = damp(torso.position.y, -0.02, 6, dt);
         const sw = Math.sin(A.phase);
-        P.armL.shoulder.rotation.x = -2.4 + sw * 0.6;
-        P.armR.shoulder.rotation.x = -2.4 - sw * 0.6;
+        P.armL.shoulder.rotation.x = 2.4 - sw * 0.6;
+        P.armR.shoulder.rotation.x = 2.4 + sw * 0.6;
         P.armL.elbow.rotation.x = 0.45 - sw * 0.3;
         P.armR.elbow.rotation.x = 0.45 + sw * 0.3;
-        neck.rotation.x = 0.55;
+        neck.rotation.x = -0.55;
         return;
       }
       torso.position.y = damp(torso.position.y, 0, 8, dt);
@@ -226,26 +226,31 @@ export function createZombieModel(type = 'walker', variant = 0) {
         P.legR.knee.rotation.x = -Math.max(0, -Math.cos(A.phase)) * 0.75 * amp;
       }
 
-      // 手臂：经典僵尸前伸（攻击时前挥）
+      // 手臂：经典僵尸前伸
+      // 实测扫描（手相对身体的 z / 高度）：
+      //   x=0    -> z +0.03, y 0.73（垂着）
+      //   x=-0.8 -> z -0.46, y 0.96
+      //   x=-1.2 -> z -0.61, y 1.19（最靠前，胸口高度）
+      // 所以取 -1.2 附近作为前伸姿势。
       const atk = A.attack;
-      const baseArm = -1.45 - atk * 0.45;
+      const baseArm = -1.2 - atk * 0.45;
       if (!P.armL.shoulder.visible) { /* 断臂 */ }
       else {
-        P.armL.shoulder.rotation.x = baseArm + sw * 0.20;
-        P.armL.shoulder.rotation.z = 0.10;
-        P.armL.elbow.rotation.x = -0.22 + Math.sin(t * 2.2) * 0.10;
+        P.armL.shoulder.rotation.x = baseArm - sw * 0.12;
+        P.armL.shoulder.rotation.z = 0.12;
+        P.armL.elbow.rotation.x = 0.15 - Math.sin(t * 2.2) * 0.06;
       }
       if (!P.armR.shoulder.visible) { /* 断臂 */ }
       else {
-        P.armR.shoulder.rotation.x = baseArm - sw * 0.20;
-        P.armR.shoulder.rotation.z = -0.10;
-        P.armR.elbow.rotation.x = -0.22 - Math.sin(t * 2.2) * 0.10;
+        P.armR.shoulder.rotation.x = baseArm + sw * 0.12;
+        P.armR.shoulder.rotation.z = -0.12;
+        P.armR.elbow.rotation.x = 0.15 + Math.sin(t * 2.2) * 0.06;
       }
 
-      // 躯干晃动 + 受击后仰
-      torso.rotation.x = 0.12 + Math.sin(A.phase * 0.5) * 0.05 + A.hitT * 0.4;
+      // 躯干晃动 + 受击后仰（前方 -Z，前倾用负角度）
+      torso.rotation.x = -0.12 + Math.sin(A.phase * 0.5) * 0.05 - A.hitT * 0.4;
       torso.rotation.z = sw * 0.05;
-      neck.rotation.x = -0.1 + Math.sin(t * 1.3) * 0.05;
+      neck.rotation.x = 0.1 + Math.sin(t * 1.3) * 0.05;
       neck.rotation.z = Math.sin(t * 0.7) * 0.08;
     },
   };

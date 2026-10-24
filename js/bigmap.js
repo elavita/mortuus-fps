@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { mulberry32, rand, randInt, pick, clamp } from './util.js';
 
 const V = (x, z, y = 0) => new THREE.Vector3(x, y, z);
-const CELL = 8;      // 每格 8m
-const GRID = 9;      // 9x9 格
+const CELL = 10;     // 每格 10m（房间更大）
+const GRID = 15;     // 15x15 格 = 150m x 150m
 
 export function generateMap(seed) {
   const rng = mulberry32(seed);
@@ -16,7 +16,7 @@ export function generateMap(seed) {
   const size = GRID * CELL;
   const half = size / 2;
 
-  // ---------- 1. 在 9x9 格网上生成房间 ----------
+  // ---------- 1. 在格网上生成房间 ----------
   // 每个房间是矩形（格坐标），房间之间至少隔 1 格（走廊）
   const rooms = [];
   const occupied = new Uint8Array(GRID * GRID);
@@ -35,18 +35,19 @@ export function generateMap(seed) {
     return true;
   };
 
-  // 先放几个大房间，再补小房间
+  // 大房间布局（15x15 格网），保证有足够空间铺开
   const layoutPlan = [
-    [0, 0, 3, 3], [4, 0, 3, 2], [7, 0, 2, 4],
-    [0, 4, 2, 3], [3, 4, 3, 3], [7, 4, 2, 2],
-    [0, 7, 3, 2], [4, 7, 4, 2],
+    [0, 0, 4, 4], [6, 0, 4, 3], [11, 0, 3, 5],
+    [0, 5, 3, 4], [4, 4, 5, 5], [11, 6, 3, 3],
+    [0, 10, 4, 4], [5, 10, 5, 4], [11, 10, 3, 4],
+    [6, 7, 3, 2], [1, 1, 2, 2], [10, 2, 2, 2],
   ];
   for (const [x, z, w, d] of layoutPlan) {
-    if (rng() < 0.88) tryPlace(x, z, w, d);
+    if (rng() < 0.9) tryPlace(x, z, w, d);
   }
   // 补一些随机房间填缝
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const w = RI(2, 3), d = RI(2, 3);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const w = RI(2, 4), d = RI(2, 4);
     const x = RI(0, GRID - w), z = RI(0, GRID - d);
     if (rng() < 0.55) tryPlace(x, z, w, d);
   }
