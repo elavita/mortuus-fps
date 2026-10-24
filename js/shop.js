@@ -273,7 +273,10 @@ export class Shop {
 
     body.querySelectorAll('[data-pick]').forEach(el => {
       el.addEventListener('click', () => {
-        this.pickIndex = +el.dataset.pick;
+        const i = +el.dataset.pick;
+        // 空槽位不响应点击（避免右侧变成空白）
+        if (!inv.loadout[i]) return;
+        this.pickIndex = i;
         this.slot = null;
         this.game.audio.ui('click');
         this.render();
