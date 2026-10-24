@@ -20,6 +20,7 @@ import { Campaign } from './campaign.js';
 import { RoundMode } from './rounds.js';
 import { Shop } from './shop.js';
 import { Inventory } from './inventory.js';
+import { MouseInput } from './mouseinput.js';
 import { generateMap } from './bigmap.js';
 import { buildGun } from './gunmodel.js';
 import { DEFAULT_CLASSES, DEFAULT_STREAKS } from './data.js';
@@ -59,7 +60,7 @@ const GradeShader = {
 
 class Game {
   constructor() {
-    this.settings = Object.assign({ sens: 1.0, adsSens: 0.9, fov: 78, quality: 'high', volume: 0.8, voice: true, invertY: false, showFps: true }, JSON.parse(localStorage.getItem('mf_settings') || '{}'));
+    this.settings = Object.assign({ sens: 1.0, adsSens: 0.9, fov: 78, quality: 'high', volume: 0.8, voice: true, invertY: false, showFps: true, adsMode: 'hold' }, JSON.parse(localStorage.getItem('mf_settings') || '{}'));
     this.profile = Object.assign({ xp: 0, classes: JSON.parse(JSON.stringify(DEFAULT_CLASSES)), streaks: [...DEFAULT_STREAKS], selClass: 0, campaignBest: null }, JSON.parse(localStorage.getItem('mf_profile') || '{}'));
     if (!this.profile.classes || this.profile.classes.length < 5) this.profile.classes = JSON.parse(JSON.stringify(DEFAULT_CLASSES));
     this.state = 'loading';
@@ -165,65 +166,93 @@ class Game {
       }
     });
     window.addEventListener('keyup', e => { I.keys[e.code] = false; if (e.code === 'Tab' && this.state === 'play') this.hud.showScoreboard(false); });
-    // 鼠标位移过滤：浏览器（尤其 Windows 版 Chrome/Edge）在指针锁定下偶尔会给出
-    // 巨大的错误 movementX/Y（光标被拉回中心时的跳变、锁定刚生效时的第一帧等），
-    // 表现为视角"闪现"。这里丢弃锁定后最初的事件，并剔除相对近期平均值异常巨大的单次跳变。
-    const MF = this.mouseFilter = { since: 0, avg: 0, strikes: 0, lastT: 0 };
-    window.addEventListener('mousemove', e => {
-      if (document.pointerLockElement !== cv) return;
-      const now = performance.now();
-      if (now - MF.since < 120) return;                       // 锁定刚生效：丢弃
-      const dx = e.movementX || 0, dy = e.movementY || 0;
-      const mag = Math.hypot(dx, dy);
-      if (now - MF.lastT > 250) MF.avg = Math.min(MF.avg, 30); // 静止一段后重新起算
-      MF.lastT = now;
-      const limit = Math.max(160, MF.avg * 7);
-      if (mag > limit) {
-        // 连续多次大位移说明是真实的快速甩枪，放行；孤立的跳变视为噪声丢弃
-        if (++MF.strikes < 3) return;
-      } else MF.strikes = 0;
-      MF.avg = MF.avg * 0.8 + Math.min(mag, limit) * 0.2;
-      I.mdx += dx; I.mdy += dy;
-    });
+
+    // ---- 鼠标输入：Pointer Lock + Fullscreen（独立模块） ----
+    this.mouse = new MouseInput(this, cv);
+    this.mouse.setAdsMode(this.settings.adsMode || 'hold');
+    this.mouse.onStateChange = st => this.onMouseStateChange(st);
+
     window.addEventListener('mousedown', e => {
-      if (this.state === 'play' && !this.paused && document.pointerLockElement !== cv && !this.menu.overlayOpen && e.target === cv) { this.lock(); return; }
-      if (document.pointerLockElement === cv) { I.buttons |= (1 << e.button); I.pressed['Mouse' + e.button] = true; }
-    });
-    window.addEventListener('mouseup', e => { I.buttons &= ~(1 << e.button); });
-    window.addEventListener('wheel', e => { if (document.pointerLockElement === cv) I.wheel += Math.sign(e.deltaY); }, { passive: true });
-    window.addEventListener('contextmenu', e => e.preventDefault());
-    document.addEventListener('pointerlockchange', () => {
-      const locked = document.pointerLockElement === cv;
-      MF.since = performance.now(); MF.avg = 0; MF.strikes = 0; I.mdx = 0; I.mdy = 0;
-      document.getElementById('clickToPlay').classList.add('hidden');
-      if (!locked && this.state === 'play' && !this.paused && !this.dead && !this.menu.overlayOpen && !this.ending) {
-        // 只在用户手动 Esc 退出锁定后暂停；无头/自动化环境不打断
-        if (this.userUnlocked) this.pause(true);
+      const locked = this.mouse.isPointerLocked;
+      const ctp = document.getElementById('clickToPlay');
+      const onOverlay = ctp && !ctp.classList.contains('hidden') && ctp.contains(e.target);
+      // 左键/右键在锁定后统一进 buttons 位掩码
+      if (locked) { I.buttons |= (1 << e.button); I.pressed['Mouse' + e.button] = true; }
+      // 右键：交给开镜逻辑
+      if (e.button === 2 && this.state === 'play' && !this.paused && !this.menu.overlayOpen) {
+        this.mouse.onRightDown();
       }
-      if (!locked) { I.buttons = 0; }
+      // 未锁定且点在画布或"继续"遮罩上 → 请求锁定+全屏（必须在用户点击回调内）
+      if (!locked && this.state === 'play' && !this.paused && !this.menu.overlayOpen && (e.target === cv || onOverlay)) {
+        this.mouse.requestLockAndFullscreen();
+      }
     });
-    document.getElementById('clickToPlay').addEventListener('click', () => this.lock());
+    window.addEventListener('mouseup', e => {
+      I.buttons &= ~(1 << e.button);
+      if (e.button === 2) this.mouse.onRightUp();
+    });
+    window.addEventListener('wheel', e => { if (this.mouse.isPointerLocked) I.wheel += Math.sign(e.deltaY); }, { passive: true });
+
+    document.getElementById('clickToPlay').addEventListener('click', () => {
+      this.mouse.requestLockAndFullscreen();
+    });
     document.getElementById('btnChangeClass').addEventListener('click', () => this.menu.showClassSelect());
   }
+
+  /** 鼠标锁定/全屏状态变化 */
+  onMouseStateChange(st) {
+    this.hud && this.hud.opticsState && this.hud.opticsState(st);
+  }
+
+  /** 用户按 Esc 退出指针锁定 → 暂停 + 退出开镜 + 显示继续遮罩 */
+  onPointerUnlocked() {
+    this.mouse.forceExitAim();
+    this.input.buttons = 0;
+    if (this.state === 'play' && !this.paused && !this.menu.overlayOpen && !this.ending) {
+      this.pause(true);
+      this.showClickToPlay('已暂停 · 点击继续');
+    }
+  }
+
+  /** 指针锁定失败 */
+  onLockFailed() {
+    this.mouse.forceExitAim();
+    const el = document.getElementById('clickToPlay');
+    if (el && this.state === 'play' && !this.paused) {
+      el.classList.remove('hidden');
+      el.innerHTML = `<div style="text-align:center">
+        <div style="font-size:22px;letter-spacing:4px;margin-bottom:10px">鼠标锁定失败</div>
+        <div style="font-size:14px;color:#aaa;margin-bottom:14px">点击重试，或在设置里切换为「切换开镜」模式</div>
+        <div style="font-size:13px;color:#7c848c">点击此区域重新尝试</div>
+      </div>`;
+    }
+  }
+
+  showClickToPlay(text) {
+    const el = document.getElementById('clickToPlay');
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.innerHTML = `<div style="text-align:center">
+      <div style="font-size:22px;letter-spacing:6px;margin-bottom:8px">${text || '点击继续'}</div>
+      <div style="font-size:13px;color:#8b939b">点击后重新锁定鼠标并进入全屏</div>
+    </div>`;
+  }
+
   lock() {
-    this.audio.init();
-    if (document.pointerLockElement === this.canvas) return;
-    // 优先请求原始输入（unadjustedMovement）：绕过系统鼠标加速，也能避开 Chrome 的位移跳变 bug；
-    // 不支持时回退到普通指针锁定
-    const cv = this.canvas;
-    const plain = () => { try { const q = cv.requestPointerLock(); if (q && q.catch) q.catch(() => { }); } catch (e) { } };
-    try {
-      const p = cv.requestPointerLock({ unadjustedMovement: true });
-      if (p && p.catch) p.catch(err => { if (!err || err.name === 'NotSupportedError' || err.name === 'NotAllowedError' && document.pointerLockElement !== cv) plain(); });
-      else if (!p) { /* 旧浏览器不返回 Promise：已按普通方式处理 */ }
-    } catch (e) { plain(); }
+    // 兼容旧调用：统一走 MouseInput
+    if (this.mouse) this.mouse.requestLockAndFullscreen();
   }
   pause(v) {
     if (this.state !== 'play') return;
     if (v && this.shop && this.shop.open) return;   // 商店打开时不弹暂停
     this.paused = v;
-    if (v) { this.menu.showPause(); if (document.pointerLockElement) document.exitPointerLock(); }
-    else { this.menu.hide(); this.lock(); }
+    if (v) {
+      this.menu.showPause();
+      if (this.mouse) { this.mouse.forceExitAim(); this.mouse.exitLock(); }
+    } else {
+      this.menu.hide();
+      this.mouse && this.mouse.requestLockAndFullscreen();
+    }
   }
 
   // 帧输入快照
@@ -232,7 +261,9 @@ class Game {
     const s = {
       fwd: K.KeyW, back: K.KeyS, left: K.KeyA, right: K.KeyD,
       sprint: K.ShiftLeft || K.ShiftRight, jumpPressed: P.Space, crouchPressed: P.KeyC || P.ControlLeft,
-      fire: !!(I.buttons & 1), ads: !!(I.buttons & 4),
+      fire: !!(I.buttons & 1),
+      // 开镜：由 MouseInput 统一裁决（hold/toggle 模式、未锁定时禁止开镜）
+      ads: this.mouse ? this.mouse.adsActive : !!(I.buttons & 4),
       reloadPressed: P.KeyR, swapPressed: I.wheel !== 0, slot1: P.Digit1, slot2: P.Digit2,
       meleePressed: P.KeyV || P.Mouse3, lethalPressed: P.KeyG, lethal: K.KeyG, tacticalPressed: P.KeyQ, tactical: K.KeyQ,
       interact: K.KeyF, interactPressed: P.KeyF, nvgPressed: P.KeyN,
@@ -364,10 +395,9 @@ class Game {
     // 预热编译
     this.renderer.compile(this.scene, this.camera);
     this.menu.hide();
-    // 指针锁定提示：不自动显示，避免遮挡画面；未锁定时点击画面会自动请求锁定
-    const ctp = document.getElementById('clickToPlay');
-    ctp.classList.add('hidden');
-    this.lock();
+    // 进入游戏：显示"点击开始"遮罩（必须由真实点击触发锁定+全屏）
+    this.showClickToPlay('点击开始');
+    this.mouse.forceExitAim();
   }
   exitToMenu() {
     this.clearWorld();
@@ -376,7 +406,8 @@ class Game {
     this.hud.hideModeUI();
     document.body.classList.remove('zombie-mode');
     document.getElementById('deathScreen').classList.add('hidden');
-    if (document.pointerLockElement) document.exitPointerLock();
+    if (this.mouse) { this.mouse.forceExitAim(); this.mouse.exitLock(); this.mouse.exitFullscreen(); }
+    document.getElementById('clickToPlay').classList.add('hidden');
     this.menu.showMain();
   }
 

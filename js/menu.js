@@ -622,6 +622,11 @@ export class Menu {
         ${tog('invertY', '反转 Y 轴')}
         ${tog('voice', '语音播报')}
         ${tog('showFps', '显示帧数')}
+        <div class="set-row"><span>开镜模式</span><div class="seg" data-ads="1">
+          <div data-v="hold" class="${(S.adsMode || 'hold') === 'hold' ? 'sel' : ''}">按住右键</div>
+          <div data-v="toggle" class="${S.adsMode === 'toggle' ? 'sel' : ''}">切换开镜</div>
+        </div></div>
+        <div style="font-size:11px;color:#777;margin-top:2px">「切换开镜」按一下右键开镜、再按一下收镜；鼠标锁定不可用时建议用这个模式。</div>
         <div style="font-size:11px;color:#777;margin-top:8px">画面质量中的阴影与纹理分辨率将在下次加载地图 / 刷新页面后完全生效。</div>
         <div class="keys">
           <div><b>WASD</b>移动</div><div><b>鼠标左/右键</b>射击 / 瞄准</div>
@@ -650,6 +655,13 @@ export class Menu {
     r.querySelectorAll('.seg[data-q] div').forEach(d => d.addEventListener('click', () => {
       S.quality = d.dataset.v; r.querySelectorAll('.seg[data-q] div').forEach(x => x.classList.toggle('sel', x === d));
       this.game.saveSettings(); this.game.applyQuality();
+    }));
+    // 开镜模式
+    r.querySelectorAll('.seg[data-ads] div').forEach(d => d.addEventListener('click', () => {
+      S.adsMode = d.dataset.v;
+      r.querySelectorAll('.seg[data-ads] div').forEach(x => x.classList.toggle('sel', x === d));
+      if (this.game.mouse) this.game.mouse.setAdsMode(S.adsMode);
+      this.game.saveSettings();
     }));
     this.on(r, '[data-a=back]', () => { if (inGame) this.showPause(); else this.showMain(); });
     this.on(r, '[data-a=resetp]', () => { if (confirm('确定要重置所有配装与经验值吗？')) { localStorage.removeItem('mf_profile'); location.reload(); } });

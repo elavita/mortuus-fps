@@ -207,9 +207,20 @@ export class RoundMode {
     this.stateT = 0;
     game.hud.announce(`第 ${this.round} 回合`, this.round === 1 ? '活下去' : `${this.toSpawn} 个目标`, 2.4);
     game.audio.tone(180, 0.8, 0.15, 'sine', null, 0.5);
-    // 回合开始：队友复活 + 弹药回收
-    for (const t of game.teammates) {
-      if (!t.alive || t.downed) t.roundReset(this.spawnPos);
+    // 回合开始：队友复活（按队形分散，避免全叠在一点被分离力挤到墙角）
+    for (let i = 0; i < game.teammates.length; i++) {
+      const t = game.teammates[i];
+      if (!t.alive || t.downed) {
+        const off = [[-3.4, 2.6], [3.4, 2.6], [0, 4.4]][i % 3];
+        const p = this.spawnPos.clone().add(V(off[0], off[1], 0));
+        // 确保落点可走，否则退回出生点附近随机
+        const [ix, iz] = game.world.cellOf(p.x, p.z);
+        if (!game.world.walkable(ix, iz)) {
+          const rp = game.world.randomWalkable(this.spawnPos.x, this.spawnPos.z, 6);
+          p.copy(rp);
+        }
+        t.roundReset(p);
+      }
     }
     if (game.runMods.refillEachRound) {
       game.player.ws.refill(1);
@@ -250,6 +261,8 @@ export class RoundMode {
   openShop() {
     const game = this.game;
     if (!game.shop) return this.finishIntermission();
+    // 打开商店：退出开镜、释放指针锁定，避免锁定状态下点不到 UI
+    if (game.mouse) { game.mouse.forceExitAim(); game.mouse.exitLock(); }
     game.shop.show({
       onClose: () => this.finishIntermission(),
     });
@@ -264,6 +277,8 @@ export class RoundMode {
     setTimeout(() => {
       game.hud.fade(0, 0.5);
       this.nextRound();
+      // 回到战斗：提示点击继续（锁定需用户手势）
+      game.showClickToPlay('点击继续');
     }, 380);
   }
 

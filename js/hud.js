@@ -335,4 +335,22 @@ export class HUD {
   hideModeUI() {
     ['roundBox', 'pointsBox', 'squadBar'].forEach(id => { const e = $(id); if (e) e.classList.add('hidden'); });
   }
+
+  /** 鼠标锁定/全屏状态（供 HUD 提示用） */
+  opticsState(st) {
+    this._mouseState = st;
+    const el = $('inputState');
+    if (!el) return;
+    let msg = '';
+    if (st.lastError === 'pointerlock') msg = '鼠标锁定失败 · 点击重试';
+    else if (st.lastError === 'fullscreen') msg = '全屏失败 · 游戏仍可进行';
+    else if (st.lastError === 'unsupported') msg = '浏览器不支持鼠标锁定 · 请用「切换开镜」';
+    else if (!st.isPointerLocked) msg = '点击画面锁定鼠标';
+    if (msg) {
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  }
 }

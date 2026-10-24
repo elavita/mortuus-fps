@@ -500,3 +500,13 @@ body.zombie-mode #compass, body.zombie-mode #minimapWrap { display: none !import
 .o-state { font-size: 11px; color: #79828a; font-family: "Consolas", monospace; }
 .as-opt.on .o-state { color: #4a9e5a; }
 .as-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
+
+/* ================= 鼠标输入状态提示 ================= */
+#inputState { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); font-size: 12px; letter-spacing: 2px; color: #ffcf5a; background: rgba(8,10,12,.7); padding: 5px 14px; border-left: 2px solid #ffcf5a; pointer-events: none; }
+#inputState.hidden { display: none; }
+#clickToPlay { cursor: pointer; }
+#clickToPlay .kbd { margin: 0 3px; }
+
+/* 继续遮罩：只占中央，不拦截全屏点击 */
+#clickToPlay { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.28); font-size: 22px; letter-spacing: 6px; cursor: pointer; }
+#clickToPlay.hidden { display: none; }

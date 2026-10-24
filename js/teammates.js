@@ -214,11 +214,24 @@ export class Teammate {
       // 离玩家太近就后退（防止贴脸挡视线）
       const dGoal = Math.hypot(goal.x - this.pos.x, goal.z - this.pos.z);
       this.steer(goal, dToPlayer > 9 ? 5.4 : 3.6, desired);
+      // 卡在墙边（steer 返回零速度但离目标还远）→ 侧向绕行
+      if (desired.lengthSq() < 0.01 && dGoal > 1.6) {
+        const away = Math.atan2(this.pos.x - goal.x, this.pos.z - goal.z);
+        const side = away + Math.PI * 0.5 * (this.index % 2 ? 1 : -1);
+        desired.set(Math.sin(side) * 3.2, 0, Math.cos(side) * 3.2);
+        this.path = null;
+        this.pathT = -99;
+      }
       if (dToPlayer < 3.2 && pl) {
-        // 推开：远离玩家
+        // 推开：远离玩家，但先检查该方向是否可走，避免被推进墙角
         const ax = this.pos.x - pl.pos.x, az = this.pos.z - pl.pos.z;
         const al = Math.hypot(ax, az) || 1;
-        desired.x += ax / al * 3.2; desired.z += az / al * 3.2;
+        const probeX = this.pos.x + (ax / al) * 1.0;
+        const probeZ = this.pos.z + (az / al) * 1.0;
+        const [pix, piz] = g.world.cellOf(probeX, probeZ);
+        if (g.world.walkable(pix, piz)) {
+          desired.x += ax / al * 3.2; desired.z += az / al * 3.2;
+        }
       }
       if (dToPlayer > 14 && pl && pl.alive) {
         // 掉队太久，直接传送到玩家附近
