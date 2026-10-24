@@ -189,6 +189,7 @@ export class Shop {
       this.pickIndex = 0;
       this.slot = null;
     }
+    if (this.pickIndex >= loadout.length) this.pickIndex = 0;
 
     // 左：携带槽位
     const slotsHtml = [0, 1].map(i => {
@@ -286,9 +287,18 @@ export class Shop {
       el.addEventListener('click', () => {
         const id = el.dataset.w;
         const idx = loadout.findIndex(w => w.id === id);
-        if (idx >= 0) { this.pickIndex = idx; }
-        else {
-          inv.equipWeapon(id, this.pickIndex < loadout.length ? this.pickIndex : null);
+        if (idx >= 0) {
+          // 已装备：直接选中
+          this.pickIndex = idx;
+        } else {
+          // 未装备：优先放空槽，两个槽都满则提示
+          if (loadout.length >= 2) {
+            this.game.hud.popup('两个槽位都满了，先卸下一把', '#ff6a5a');
+            this.game.audio.empty();
+            return;
+          }
+          inv.equipWeapon(id);
+          this.pickIndex = inv.loadout.length - 1;
           this.syncLoadout();
         }
         this.slot = null;

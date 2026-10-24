@@ -31,19 +31,22 @@ export class Inventory {
     this.weapons.add(id);
     return true;
   }
-  /** 把武器放进携带槽位 */
+  /** 把武器放进携带槽位。slotIndex 为 null 时自动找空位，没有空位才替换第二个 */
   equipWeapon(id, slotIndex = null) {
     if (!this.weapons.has(id)) return false;
     const exist = this.loadout.findIndex(w => w.id === id);
     if (exist >= 0) return false;
     const entry = { id, att: {}, camo: this.camo[id] || 'none' };
     if (slotIndex === null) {
-      if (this.loadout.length >= 2) this.loadout[1] = entry;
-      else this.loadout.push(entry);
-    } else {
+      if (this.loadout.length < 2) this.loadout.push(entry);
+      else this.loadout[1] = entry;      // 满了两把才替换副武器位
+    } else if (slotIndex < this.loadout.length) {
+      // 指定槽位：替换该位置
       this.loadout[slotIndex] = entry;
-      this.loadout = this.loadout.filter(Boolean);
+    } else {
+      this.loadout.push(entry);
     }
+    this.loadout = this.loadout.filter(Boolean);
     return true;
   }
   unequipWeapon(index) {
