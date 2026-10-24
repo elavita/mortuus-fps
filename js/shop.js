@@ -184,6 +184,11 @@ export class Shop {
   renderStash(body) {
     const g = this.game, inv = g.inventory, pl = g.player;
     const loadout = inv.loadout;
+    // 选中的槽位为空时，自动回落到第一个已装备的武器，避免右侧空白
+    if (!loadout[this.pickIndex] && loadout.length) {
+      this.pickIndex = 0;
+      this.slot = null;
+    }
 
     // 左：携带槽位
     const slotsHtml = [0, 1].map(i => {
