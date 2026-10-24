@@ -237,14 +237,14 @@ export function createZombieModel(type = 'walker', variant = 0) {
       if (!P.armL.shoulder.visible) { /* 断臂 */ }
       else {
         P.armL.shoulder.rotation.x = baseArm - sw * 0.12;
-        P.armL.shoulder.rotation.z = 0.12;
-        P.armL.elbow.rotation.x = 0.15 - Math.sin(t * 2.2) * 0.06;
+        P.armL.shoulder.rotation.z = 0.22;
+        P.armL.elbow.rotation.x = 0.12 - Math.sin(t * 2.2) * 0.06;
       }
       if (!P.armR.shoulder.visible) { /* 断臂 */ }
       else {
         P.armR.shoulder.rotation.x = baseArm + sw * 0.12;
-        P.armR.shoulder.rotation.z = -0.12;
-        P.armR.elbow.rotation.x = 0.15 + Math.sin(t * 2.2) * 0.06;
+        P.armR.shoulder.rotation.z = -0.22;
+        P.armR.elbow.rotation.x = 0.12 + Math.sin(t * 2.2) * 0.06;
       }
 
       // 躯干晃动 + 受击后仰（前方 -Z，前倾用负角度）
