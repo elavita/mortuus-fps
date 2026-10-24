@@ -11,6 +11,8 @@ import { WEAPONS } from './data.js';
 import { rand, clamp, damp, pick } from './util.js';
 
 const V = (x, z, y = 0) => new THREE.Vector3(x, y, z);
+// 尸体在场上停留的时间（秒），之后淡出消失
+const CORPSE_TIME = 12;
 
 export class RoundMode {
   constructor(game, cfg) {
@@ -374,12 +376,17 @@ export class RoundMode {
     if (this.over) return;
     this.stateT += dt;
 
-    // 僵尸更新
-    for (const z of game.zombies) if (z.alive) z.update(dt);
-    // 移除死亡已久的
+    // 僵尸更新：死亡僵尸也要更新（否则 deadT 不增长，倒地动画不播、尸体也不会消失）
+    for (const z of game.zombies) z.update(dt);
+    // 尸体清理：倒地停留 corpseTime 秒后淡出并移除
     for (let i = game.zombies.length - 1; i >= 0; i--) {
       const z = game.zombies[i];
-      if (!z.alive && z.model.state.deadT > 8) { z.dispose(); game.zombies.splice(i, 1); game.entities = game.entities.filter(e => e !== z); }
+      if (z.alive) continue;
+      if (z.model.state.deadT > CORPSE_TIME) {
+        z.dispose();
+        game.zombies.splice(i, 1);
+        game.entities = game.entities.filter(e => e !== z);
+      }
     }
     // 碎块
     if (game.chunks && game.chunks.length) {

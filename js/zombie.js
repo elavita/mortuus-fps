@@ -168,9 +168,10 @@ export function createZombieModel(type = 'walker', variant = 0) {
       return wp;
     },
     /** 死亡：按方向倒地 */
-    die(dir, roll) {
+    die(dir, roll, corpseTime) {
       state.dead = true;
       state.deadT = 0;
+      state.corpseTime = corpseTime || 12;
       // 相对身体的前向 (-z 为前)
       const f = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), root.rotation.y);
       state.fallDir = f.dot(dir || new THREE.Vector3(0, 0, 1)) > 0 ? -1 : 1;
@@ -179,6 +180,7 @@ export function createZombieModel(type = 'walker', variant = 0) {
     /** 每帧动画 */
     animate(dt, t) {
       const A = state;
+      const P = parts;
       if (A.dead) {
         A.deadT += dt;
         const k = clamp(A.deadT / 0.5, 0, 1);
@@ -189,9 +191,21 @@ export function createZombieModel(type = 'walker', variant = 0) {
         // 死亡后肢体松弛
         P.armL.shoulder.rotation.x = damp(P.armL.shoulder.rotation.x, 0.4, 6, dt);
         P.armR.shoulder.rotation.x = damp(P.armR.shoulder.rotation.x, 0.5, 6, dt);
+        // 沉入地面（被清理前 2 秒开始下沉淡出）
+        if (A.deadT > (A.corpseTime || 12) - 2) {
+          const sink = clamp((A.deadT - ((A.corpseTime || 12) - 2)) / 2, 0, 1);
+          root.position.y = -sink * 1.1;
+          root.traverse(o => {
+            if (!o.isMesh || !o.material) return;
+            if (o.material.transparent !== true) {
+              o.material = o.material.clone();
+              o.material.transparent = true;
+            }
+            o.material.opacity = 1 - sink;
+          });
+        }
         return;
       }
-      const P = parts;
       A.hitT = Math.max(0, A.hitT - dt * 4);
       const moving = A.speed > 0.15;
       if (moving) A.phase += dt * A.speed * 2.6;

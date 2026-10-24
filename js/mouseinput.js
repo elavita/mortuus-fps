@@ -40,28 +40,79 @@ export class MouseInput {
   _bind() {
     const cv = this.canvas;
 
-    // 1) 右键菜单：只拦截游戏画布，不影响设置菜单等 UI
-    cv.addEventListener('contextmenu', e => {
+    // 判断事件是否落在游戏区域（画布或"点击继续"遮罩），
+    // 避免影响设置菜单、商店等 UI。
+    const isGameArea = target => {
+      if (!target) return false;
+      if (target === cv) return true;
+      const ctp = document.getElementById('clickToPlay');
+      if (ctp && !ctp.classList.contains('hidden') && ctp.contains(target)) return true;
+      // 全屏时画布铺满，指针锁定下 target 可能不是 canvas
+      if (this.isPointerLocked) return true;
+      return false;
+    };
+
+    // 1) 右键菜单 + 右键按下：在 window 的**捕获阶段**拦截，
+    //    这样才能抢在鼠标手势扩展（它们也挂捕获阶段）之前吃掉事件。
+    window.addEventListener('contextmenu', e => {
+      if (!isGameArea(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
-    });
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }, true);
 
-    // 2) mousedown：拦截右键默认行为（只针对画布）
-    cv.addEventListener('mousedown', e => {
-      if (e.button === 2) {
-        e.preventDefault();
+    window.addEventListener('mousedown', e => {
+      if (e.button !== 2) return;
+      if (!isGameArea(e.target)) return;
+      this._rightDown = true;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }, { capture: true, passive: false });
+
+    // 2) 右键拖动：手势扩展通常靠 mousemove + 右键状态识别轨迹。
+    //    游戏区域内、右键按住期间，阻止事件冒泡到扩展。
+    this._rightDown = false;
+    window.addEventListener('mouseup', e => {
+      if (e.button === 2) this._rightDown = false;
+    }, true);
+
+    // 2b) 其他可能被手势扩展利用的入口事件：游戏区域内右键时一并吃掉
+    window.addEventListener('pointerdown', e => {
+      if (e.button === 2 && isGameArea(e.target)) {
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
+      }
+    }, true);
+    window.addEventListener('dragstart', e => {
+      if (isGameArea(e.target)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    window.addEventListener('selectstart', e => {
+      if (isGameArea(e.target)) { e.preventDefault(); }
+    }, true);
+    window.addEventListener('auxclick', e => {
+      if (e.button === 2 && isGameArea(e.target)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    window.addEventListener('pointermove', e => {
+      if (this._rightDown && isGameArea(e.target)) e.stopPropagation();
+    }, true);
+
+    // 3) 指针锁定期间，整个窗口都算游戏区域：拦截右键与拖动
+    //    （锁定后鼠标不会真的移动，扩展也不该响应）
+    // 4) 鼠标移动：锁定后用 movementX/Y；未锁定走降级
+    window.addEventListener('mousemove', e => {
+      if (this.isPointerLocked && this._rightDown) {
+        // 锁定时吞掉冒泡，避免扩展拿到轨迹
         e.stopPropagation();
       }
-    }, { passive: false });
+      this._onMouseMove(e);
+    }, true);
 
-    // 3) 鼠标移动：锁定后用 movementX/Y；未锁定走降级
-    window.addEventListener('mousemove', e => this._onMouseMove(e));
-
-    // 4) 指针锁定状态
+    // 5) 指针锁定状态
     document.addEventListener('pointerlockchange', () => this._onLockChange());
     document.addEventListener('pointerlockerror', () => this._onLockError());
 
-    // 5) 全屏状态
+    // 6) 全屏状态
     document.addEventListener('fullscreenchange', () => this._onFullscreenChange());
     document.addEventListener('fullscreenerror', () => {
       this.lastError = 'fullscreen';

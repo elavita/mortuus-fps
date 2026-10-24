@@ -129,7 +129,8 @@ export class Zombie {
   die(info = {}) {
     this.alive = false;
     this.hp = 0;
-    this.model.die(info.dir || new THREE.Vector3(0, 0, 1));
+    // 倒地停留 12 秒（最后 2 秒下沉淡出）
+    this.model.die(info.dir || new THREE.Vector3(0, 0, 1), undefined, 12);
     const g = this.game;
     if (info.head) {
       // 爆头额外喷血
@@ -156,10 +157,9 @@ export class Zombie {
   update(dt) {
     const g = this.game;
     const A = this.model.state;
-    // 死亡：只播倒地动画
+    // 死亡：只播倒地动画（不覆盖 root 位置，避免盖掉尸体下沉效果）
     if (!this.alive) {
       this.model.animate(dt, g.time);
-      this.model.root.position.copy(this.pos);
       return;
     }
     // 出场
